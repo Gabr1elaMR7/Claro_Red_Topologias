@@ -1,25 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+// src/DiagramComponent.js
+import React, { useEffect, useRef } from 'react';
 import * as go from 'gojs';
-import axios from 'axios';
 
-const DiagramComponent = () => {
+const DiagramComponent = ({ searchResult }) => {
   const diagramRef = useRef(null);
   const diagramInstance = useRef(null);
-  const [nodes, setNodes] = useState([]);
 
   useEffect(() => {
-    // Obtener los nodos desde el backend
-    axios.get('http://localhost:5000/nodes')
-      .then(response => {
-        setNodes(response.data);
-      })
-      .catch(error => {
-        console.error('There was an error fetching the nodes!', error);
-      });
-  }, []);
-
-  useEffect(() => {
-    if (nodes.length === 0) return;
+    if (!searchResult) return;
 
     const $ = go.GraphObject.make;
 
@@ -28,13 +16,16 @@ const DiagramComponent = () => {
       diagramInstance.current.div = null;
     }
 
-    // Crear el nuevo diagrama con ForceDirectedLayout
+    // Crear el nuevo diagrama con LayeredDigraphLayout para posiciones determinísticas
     const myDiagram = $(go.Diagram, diagramRef.current, {
-      'layout': $(go.ForceDirectedLayout), // Aplicar ForceDirectedLayout
+      'layout': $(go.LayeredDigraphLayout, {
+        direction: 90, // vertical layout
+        layerSpacing: 50 // espacio entre niveles
+      }),
       'undoManager.isEnabled': true
     });
 
-    // Plantilla de nodos
+    // Plantilla de nodos con imagen basada en el nombre del nodo
     myDiagram.nodeTemplate = $(
       go.Node,
       'Auto',
@@ -45,13 +36,18 @@ const DiagramComponent = () => {
         new go.Binding('fill', 'color')
       ),
       $(
+        go.Picture,
+        { margin: 8, width: 50, height: 50 },
+        new go.Binding('source', 'key', (key) => `/images/${key}.png`) // Asumiendo que tienes imágenes como Alpha.png
+      ),
+      $(
         go.TextBlock,
         { margin: 8 },
         new go.Binding('text', 'key')
       )
     );
 
-    // Plantilla de enlaces (sin flechas)
+    // Plantilla de enlaces (sin flechas, líneas sólidas)
     myDiagram.linkTemplate = $(
       go.Link,
       { routing: go.Link.Orthogonal, corner: 10 },
@@ -61,19 +57,9 @@ const DiagramComponent = () => {
       )
     );
 
-    // Definir el modelo de datos
-    myDiagram.model = new go.GraphLinksModel(
-      nodes,
-      [
-        { from: 'Alpha', to: 'Beta' },
-        { from: 'Alpha', to: 'Beta' },
-        { from: 'Alpha', to: 'Gamma' },
-        { from: 'Alpha', to: 'Gamma' },
-        { from: 'Beta', to: 'Delta' },
-        { from: 'Gamma', to: 'Delta' },
-        { from: 'Gamma', to: 'Delta' }
-      ]
-    );
+    // Definir el modelo de datos usando el resultado de la búsqueda
+    const nodes = [searchResult.node, ...searchResult.connectedNodes];
+    myDiagram.model = new go.GraphLinksModel(nodes, searchResult.links);
 
     // Guardar la instancia del diagrama
     diagramInstance.current = myDiagram;
@@ -82,8 +68,7 @@ const DiagramComponent = () => {
     return () => {
       myDiagram.div = null;
     };
-
-  }, [nodes]);
+  }, [searchResult]);
 
   return <div ref={diagramRef} style={{ width: '100%', height: '350px', border: '1px solid black' }}></div>;
 };
